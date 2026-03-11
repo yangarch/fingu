@@ -1,0 +1,14 @@
+services:
+  fingu:
+    build: .
+    container_name: fingu
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    env_file:
+      - .env
+    volumes:
+      - fingu-data:/app/data
+
+volumes:
+  fingu-data:
