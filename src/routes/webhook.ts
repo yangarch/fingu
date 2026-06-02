@@ -3,7 +3,7 @@ import { config } from '../config/env';
 import { StravaWebhookPayload } from '../types/strava';
 import { getActivity, getActivityLaps, updateActivityDescription } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
-import { getAthlete, isActivityProcessed, markActivityProcessed } from '../db/models/athlete';
+import { getAthlete, isActivityProcessed, markActivityProcessed, saveAnalysis } from '../db/models/athlete';
 
 const router = Router();
 
@@ -82,6 +82,14 @@ async function processActivity(activityId: number, athleteId: number): Promise<v
 
   await updateActivityDescription(athleteId, activityId, newDescription);
   markActivityProcessed(activityId, athleteId);
+  saveAnalysis({
+    activity_id: activityId,
+    athlete_id: athleteId,
+    activity_name: freshActivity.name,
+    activity_date: freshActivity.start_date_local ?? new Date().toISOString(),
+    distance: Math.round(freshActivity.distance),
+    analysis,
+  });
 
   console.log(`Successfully analyzed and updated activity ${activityId}`);
 }

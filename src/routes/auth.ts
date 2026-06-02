@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import { config } from '../config/env';
-import { saveAthlete } from '../db/models/athlete';
+import { saveAthlete, deleteAthlete, getAthlete } from '../db/models/athlete';
 import { StravaTokenResponse } from '../types/strava';
 
 const router = Router();
@@ -45,19 +45,27 @@ router.get('/strava/callback', async (req: Request, res: Response) => {
       access_token,
       refresh_token,
       expires_at,
+      athlete_name: `${athlete.firstname} ${athlete.lastname}`,
     });
 
-    res.send(`
-      <html><body>
-        <h2>✅ 인증 완료!</h2>
-        <p>안녕하세요, ${athlete.firstname} ${athlete.lastname}님!</p>
-        <p>이제부터 수영 활동이 자동으로 분석됩니다.</p>
-      </body></html>
-    `);
+    res.cookie('athlete_id', String(athlete.id), { httpOnly: true, sameSite: 'lax' });
+    res.redirect('/dashboard');
   } catch (err) {
     console.error('OAuth callback error:', err);
     res.status(500).send('토큰 교환 중 오류가 발생했습니다.');
   }
+});
+
+router.post('/disconnect', (req: Request, res: Response) => {
+  const athleteIdStr = req.cookies?.athlete_id;
+  if (athleteIdStr) {
+    const athleteId = parseInt(athleteIdStr, 10);
+    if (!isNaN(athleteId) && getAthlete(athleteId)) {
+      deleteAthlete(athleteId);
+    }
+  }
+  res.clearCookie('athlete_id');
+  res.redirect('/');
 });
 
 export default router;

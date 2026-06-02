@@ -37,5 +37,22 @@ function initializeSchema(db: Database.Database): void {
       athlete_id INTEGER NOT NULL,
       processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS swim_analyses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      activity_id INTEGER UNIQUE NOT NULL,
+      athlete_id INTEGER NOT NULL,
+      activity_name TEXT,
+      activity_date TEXT,
+      distance INTEGER,
+      analysis TEXT NOT NULL,
+      processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  try {
+    db.exec('ALTER TABLE athletes ADD COLUMN athlete_name TEXT');
+  } catch (_) {
+    // column already exists
+  }
 }

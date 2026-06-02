@@ -3,6 +3,7 @@ export interface StravaTokenData {
   refresh_token: string;
   expires_at: number;
   athlete_id: number;
+  athlete_name?: string;
 }
 
 export interface StravaWebhookPayload {
@@ -28,6 +29,7 @@ export interface StravaActivity {
   average_heartrate?: number;
   max_heartrate?: number;
   description?: string;
+  start_date_local?: string;
   laps?: StravaLap[];
   splits_metric?: StravaSplit[];
 }
