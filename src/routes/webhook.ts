@@ -3,6 +3,7 @@ import { config } from '../config/env';
 import { StravaWebhookPayload } from '../types/strava';
 import { getActivity, getActivityLaps, updateActivityDescription } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
+import { notifyFailure } from '../services/notifier';
 import { getAthlete, isActivityProcessed, markActivityProcessed, saveAnalysis } from '../db/models/athlete';
 
 const router = Router();
@@ -43,6 +44,7 @@ router.post('/', (req: Request, res: Response) => {
   // Process asynchronously
   processActivity(activityId, athleteId).catch((err) => {
     console.error(`Failed to process activity ${activityId}:`, err);
+    notifyFailure(`activity ${activityId} (athlete ${athleteId})`, err);
   });
 });
 

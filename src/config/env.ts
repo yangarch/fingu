@@ -25,4 +25,8 @@ export const config = {
   database: {
     url: process.env.DATABASE_URL || './data/swim-analyzer.db',
   },
+  notifications: {
+    // Discord or Slack incoming webhook URL. Leave unset to disable failure alerts.
+    webhookUrl: process.env.NOTIFICATION_WEBHOOK_URL || '',
+  },
 };
