@@ -8,6 +8,15 @@ import { getAthlete, isActivityProcessed, markActivityProcessed, saveAnalysis } 
 
 const router = Router();
 
+// Marker prepended to a Strava activity description once analyzed. Used to
+// detect (and skip) already-analyzed activities here and in the backfill.
+export const ANALYSIS_MARKER = '🏊 AI 수영 분석';
+
+export function buildAnalyzedDescription(existingDesc: string, analysis: string): string {
+  const separator = existingDesc ? '\n\n---\n' : '';
+  return `${existingDesc}${separator}${ANALYSIS_MARKER}\n${analysis}`;
+}
+
 // Webhook subscription verification
 router.get('/', (req: Request, res: Response) => {
   const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': verifyToken } = req.query;
@@ -70,17 +79,14 @@ async function processActivity(activityId: number, athleteId: number): Promise<v
 
   const freshActivity = await getActivity(athleteId, activityId);
 
-  const analysisMarker = '🏊 AI 수영 분석';
-  if (freshActivity.description?.includes(analysisMarker)) {
+  if (freshActivity.description?.includes(ANALYSIS_MARKER)) {
     console.log(`Activity ${activityId} already has analysis`);
     return;
   }
 
   const analysis = await analyzeSwim(freshActivity, laps);
 
-  const existingDesc = freshActivity.description || '';
-  const separator = existingDesc ? '\n\n---\n' : '';
-  const newDescription = `${existingDesc}${separator}${analysisMarker}\n${analysis}`;
+  const newDescription = buildAnalyzedDescription(freshActivity.description || '', analysis);
 
   await updateActivityDescription(athleteId, activityId, newDescription);
   markActivityProcessed(activityId, athleteId);

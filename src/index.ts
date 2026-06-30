@@ -5,6 +5,7 @@ import { getDb } from './db/index';
 import authRouter from './routes/auth';
 import webhookRouter from './routes/webhook';
 import pagesRouter from './routes/pages';
+import adminRouter from './routes/admin';
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.get('/health', (_req, res) => {
 app.use('/', pagesRouter);
 app.use('/auth', authRouter);
 app.use('/webhook', webhookRouter);
+app.use('/admin', adminRouter);
 
 // Initialize DB on startup
 getDb();

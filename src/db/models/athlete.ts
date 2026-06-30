@@ -30,6 +30,11 @@ export function getAthlete(athleteId: number): StravaTokenData | undefined {
   return db.prepare('SELECT * FROM athletes WHERE athlete_id = ?').get(athleteId) as StravaTokenData | undefined;
 }
 
+export function getAllAthletes(): StravaTokenData[] {
+  const db = getDb();
+  return db.prepare('SELECT * FROM athletes').all() as StravaTokenData[];
+}
+
 export function updateTokens(athleteId: number, accessToken: string, refreshToken: string, expiresAt: number): void {
   const db = getDb();
   db.prepare(`

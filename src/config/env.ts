@@ -29,4 +29,9 @@ export const config = {
     // Discord or Slack incoming webhook URL. Leave unset to disable failure alerts.
     webhookUrl: process.env.NOTIFICATION_WEBHOOK_URL || '',
   },
+  admin: {
+    // Token guarding the /admin/backfill endpoint. Falls back to the Strava
+    // verify token so it works without extra setup; override to separate them.
+    token: process.env.ADMIN_TOKEN || requireEnv('STRAVA_VERIFY_TOKEN'),
+  },
 };

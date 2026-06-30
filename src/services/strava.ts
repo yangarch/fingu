@@ -12,6 +12,15 @@ export async function getActivity(athleteId: number, activityId: number): Promis
   return response.data;
 }
 
+export async function getRecentActivities(athleteId: number, perPage = 50): Promise<StravaActivity[]> {
+  const token = await getValidAccessToken(athleteId);
+  const response = await axios.get(`${STRAVA_API_BASE}/athlete/activities`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { per_page: perPage },
+  });
+  return response.data;
+}
+
 export async function getActivityLaps(athleteId: number, activityId: number): Promise<StravaLap[]> {
   const token = await getValidAccessToken(athleteId);
   const response = await axios.get(`${STRAVA_API_BASE}/activities/${activityId}/laps`, {
