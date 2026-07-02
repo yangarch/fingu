@@ -18,6 +18,15 @@ export function buildAnalyzedDescription(existingDesc: string, analysis: string)
   return `${existingDesc}${separator}${ANALYSIS_MARKER}\n${analysis}`;
 }
 
+// Strava returns 403 with this error shape when the whole API application is
+// deactivated — every request fails, not just this one. We must NOT swallow it.
+// Body: {"errors":[{"resource":"Application","field":"Status","code":"Inactive"}]}
+function isAppInactiveError(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  const errors = err.response?.data?.errors as Array<{ resource?: string; code?: string }> | undefined;
+  return Boolean(errors?.some((e) => e.resource === 'Application' && e.code === 'Inactive'));
+}
+
 // Webhook subscription verification
 router.get('/', (req: Request, res: Response) => {
   const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': verifyToken } = req.query;
@@ -66,15 +75,16 @@ async function processActivity(activityId: number, athleteId: number): Promise<v
 
   // The webhook only gives us an activity id, so we must fetch it before we can
   // tell whether it's a swim. This fires for every activity type (walks, runs,
-  // rides...). A 403/404 here means the activity is inaccessible (private,
-  // deleted) or otherwise unreadable — and we can't even determine its type, so
-  // there's nothing to analyze. Skip quietly instead of paging on non-swim noise.
+  // rides...). If a single activity is inaccessible (deleted, or private/403 for
+  // that one activity) there's nothing to analyze — skip quietly rather than
+  // paging on non-swim noise. But an "Application Inactive" 403 is a real outage
+  // affecting EVERY call (including swims), so let it bubble up to alert.
   let activity: StravaActivity;
   try {
     activity = await getActivity(athleteId, activityId);
   } catch (err) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-    if (status === 403 || status === 404) {
+    if ((status === 403 || status === 404) && !isAppInactiveError(err)) {
       console.log(`Activity ${activityId} inaccessible (status ${status}), skipping`);
       return;
     }
