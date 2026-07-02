@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
+import axios from 'axios';
 import { config } from '../config/env';
-import { StravaWebhookPayload } from '../types/strava';
+import { StravaActivity, StravaWebhookPayload } from '../types/strava';
 import { getActivity, getActivityLaps, updateActivityDescription } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
 import { notifyFailure } from '../services/notifier';
@@ -63,7 +64,22 @@ async function processActivity(activityId: number, athleteId: number): Promise<v
     return;
   }
 
-  const activity = await getActivity(athleteId, activityId);
+  // The webhook only gives us an activity id, so we must fetch it before we can
+  // tell whether it's a swim. This fires for every activity type (walks, runs,
+  // rides...). A 403/404 here means the activity is inaccessible (private,
+  // deleted) or otherwise unreadable — and we can't even determine its type, so
+  // there's nothing to analyze. Skip quietly instead of paging on non-swim noise.
+  let activity: StravaActivity;
+  try {
+    activity = await getActivity(athleteId, activityId);
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    if (status === 403 || status === 404) {
+      console.log(`Activity ${activityId} inaccessible (status ${status}), skipping`);
+      return;
+    }
+    throw err;
+  }
 
   if (activity.sport_type !== 'Swim' && activity.type !== 'Swim') {
     console.log(`Activity ${activityId} is not a swim (${activity.sport_type}), skipping`);
