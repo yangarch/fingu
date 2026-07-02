@@ -55,6 +55,16 @@ async function main() {
     console.log(`   심박수: 평균 ${Math.round(activity.average_heartrate)}bpm / 최대 ${Math.round(activity.max_heartrate || 0)}bpm`);
   }
 
+  // 랩별 휴식 신호 확인용 덤프. 강습이면 랩 사이 휴식(elapsed − moving)이
+  // 길고 불규칙하게, 자유수영이면 거의 0으로 찍혀야 정상.
+  const totalRest = Math.max(0, activity.elapsed_time - activity.moving_time);
+  console.log(`\n🔍 휴식 신호 점검 (실제 수영 ${formatDuration(activity.moving_time)} / 경과 ${formatDuration(activity.elapsed_time)} / 휴식 합계 ${formatDuration(totalRest)})`);
+  laps.slice(0, 25).forEach((lap, i) => {
+    const rest = Math.max(0, lap.elapsed_time - lap.moving_time);
+    console.log(`   랩 ${i + 1}: ${Math.round(lap.distance)}m, ${formatPace(lap.average_speed)}/100m, 수영 ${formatDuration(lap.moving_time)}, 휴식 ${rest > 0 ? formatDuration(rest) : '없음'}`);
+  });
+  if (laps.length > 25) console.log(`   ... 외 ${laps.length - 25}개 랩`);
+
   // AI 분석
   console.log('\n🤖 AI 분석 중...');
   const analysis = await analyzeSwim(activity, laps);
