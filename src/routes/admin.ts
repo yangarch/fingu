@@ -7,6 +7,7 @@ import {
   updateActivityDescription,
 } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
+import { buildSwimContext } from '../services/swimContext';
 import { ANALYSIS_MARKER, buildAnalyzedDescription } from './webhook';
 import {
   getAllAthletes,
@@ -87,7 +88,8 @@ router.post('/backfill', async (req: Request, res: Response) => {
             continue;
           }
 
-          const analysis = await analyzeSwim(activity, laps);
+          const swimContext = await buildSwimContext(athlete.athlete_id, activity);
+          const analysis = await analyzeSwim(activity, laps, swimContext);
           const newDescription = buildAnalyzedDescription(activity.description || '', analysis);
 
           await updateActivityDescription(athlete.athlete_id, swim.id, newDescription);

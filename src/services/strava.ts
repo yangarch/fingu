@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { getValidAccessToken } from './token';
-import { StravaActivity, StravaLap } from '../types/strava';
+import { StravaActivity, StravaLap, StravaStreams } from '../types/strava';
 
 const STRAVA_API_BASE = 'https://www.strava.com/api/v3';
 
@@ -27,6 +27,26 @@ export async function getActivityLaps(athleteId: number, activityId: number): Pr
     headers: { Authorization: `Bearer ${token}` },
   });
   return response.data;
+}
+
+/**
+ * Time-series streams for an activity. Used to compute per-segment splits for
+ * continuous swims, where the laps API gives only a single averaged lap. Not
+ * every activity has streams; callers should tolerate empty arrays.
+ */
+export async function getActivityStreams(athleteId: number, activityId: number): Promise<StravaStreams> {
+  const token = await getValidAccessToken(athleteId);
+  const response = await axios.get(`${STRAVA_API_BASE}/activities/${activityId}/streams`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { keys: 'time,distance,velocity_smooth,heartrate', key_by_type: true },
+  });
+  const raw = response.data as Record<string, { data: number[] }>;
+  return {
+    time: raw.time?.data,
+    distance: raw.distance?.data,
+    velocity_smooth: raw.velocity_smooth?.data,
+    heartrate: raw.heartrate?.data,
+  };
 }
 
 export async function updateActivityDescription(

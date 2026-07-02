@@ -55,6 +55,13 @@ export interface StravaSplit {
   split: number;
 }
 
+export interface StravaStreams {
+  time?: number[];
+  distance?: number[];
+  velocity_smooth?: number[];
+  heartrate?: number[];
+}
+
 export interface StravaTokenResponse {
   access_token: string;
   refresh_token: string;

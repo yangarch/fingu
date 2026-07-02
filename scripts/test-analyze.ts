@@ -67,7 +67,9 @@ async function main() {
 
   // AI 분석
   console.log('\n🤖 AI 분석 중...');
-  const analysis = await analyzeSwim(activity, laps);
+  const { buildSwimContext } = await import('../src/services/swimContext');
+  const swimContext = await buildSwimContext(athlete.athlete_id, activity);
+  const analysis = await analyzeSwim(activity, laps, swimContext);
 
   console.log('\n📝 분석 결과:');
   console.log('─'.repeat(60));

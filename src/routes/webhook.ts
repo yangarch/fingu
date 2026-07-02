@@ -4,6 +4,7 @@ import { config } from '../config/env';
 import { StravaActivity, StravaWebhookPayload } from '../types/strava';
 import { getActivity, getActivityLaps, updateActivityDescription } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
+import { buildSwimContext } from '../services/swimContext';
 import { notifyFailure } from '../services/notifier';
 import { getAthlete, isActivityProcessed, markActivityProcessed, saveAnalysis } from '../db/models/athlete';
 
@@ -110,7 +111,8 @@ async function processActivity(activityId: number, athleteId: number): Promise<v
     return;
   }
 
-  const analysis = await analyzeSwim(freshActivity, laps);
+  const swimContext = await buildSwimContext(athleteId, freshActivity);
+  const analysis = await analyzeSwim(freshActivity, laps, swimContext);
 
   const newDescription = buildAnalyzedDescription(freshActivity.description || '', analysis);
 
