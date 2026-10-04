@@ -7,7 +7,8 @@ import {
   updateActivityDescription,
 } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
-import { buildSwimContext } from '../services/swimContext';
+import { buildSwimContext, stravaSource } from '../services/swimContext';
+import { SyncBusyError, syncSwims } from '../services/intervalsPoller';
 import { ANALYSIS_MARKER, buildAnalyzedDescription } from './webhook';
 import {
   getAllAthletes,
@@ -32,10 +33,14 @@ function isSwim(activity: { sport_type?: string; type?: string }): boolean {
  * Defaults to a dry run (apply=false) that only lists candidates — no Anthropic
  * calls, no writes to Strava. Pass apply=true to actually analyze and update.
  * Already-analyzed activities (processed table or existing marker) are skipped.
+ *
+ * With intervals.icu configured, swims come from there (never before
+ * INTERVALS_SINCE) and results go to the DB + notification only; perPage is
+ * ignored. Otherwise the preserved Strava path below runs.
  */
 router.post('/backfill', async (req: Request, res: Response) => {
   const token = (req.query.token as string) || req.header('x-admin-token') || '';
-  if (token !== config.admin.token) {
+  if (!config.admin.token || token !== config.admin.token) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -43,6 +48,18 @@ router.post('/backfill', async (req: Request, res: Response) => {
   const days = Math.max(1, parseInt((req.query.days as string) || '30', 10));
   const perPage = Math.min(200, Math.max(1, parseInt((req.query.perPage as string) || '50', 10)));
   const apply = req.query.apply === 'true';
+
+  if (config.intervals) {
+    try {
+      const result = await syncSwims({ days, apply });
+      res.json(apply ? result : { ...result, hint: 'add &apply=true to analyze' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Backfill error:', err);
+      res.status(err instanceof SyncBusyError ? 409 : 500).json({ error: message });
+    }
+    return;
+  }
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
   const candidates: Array<{ id: number; name: string; date?: string; distance: number }> = [];
@@ -88,7 +105,7 @@ router.post('/backfill', async (req: Request, res: Response) => {
             continue;
           }
 
-          const swimContext = await buildSwimContext(athlete.athlete_id, activity);
+          const swimContext = await buildSwimContext(activity, stravaSource(athlete.athlete_id));
           const analysis = await analyzeSwim(activity, laps, swimContext);
           const newDescription = buildAnalyzedDescription(activity.description || '', analysis);
 

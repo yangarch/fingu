@@ -1,104 +1,74 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import axios from 'axios';
-import { getDb } from '../src/db/index';
-import { getValidAccessToken } from '../src/services/token';
-import { getActivity, getActivityLaps, formatPace, formatDuration } from '../src/services/strava';
+import { formatPace, formatDuration } from '../src/services/strava';
+import { getActivityStreams, getActivityWithLaps, isSwimType, listActivities, toActivityId } from '../src/services/intervals';
+import { buildSwimContext, intervalsSource } from '../src/services/swimContext';
 import { analyzeSwim } from '../src/services/analyzer';
 
-const STRAVA_API_BASE = 'https://www.strava.com/api/v3';
-
+// 최근 수영(또는 인자로 준 intervals id, 예: i123456789)을 intervals.icu에서 받아
+// 데이터 모양을 점검하고 분석을 돌린다. DB 저장·알림 전송은 하지 않는다.
+//   npm run test:swim            # 최근 30일 중 가장 최근 수영
+//   npm run test:swim -- i123    # 특정 활동
 async function main() {
-  const db = getDb();
+  const arg = process.argv[2];
+  let activityId: number;
 
-  // DB에서 첫 번째 athlete 가져오기
-  const athlete = db.prepare('SELECT * FROM athletes LIMIT 1').get() as any;
-  if (!athlete) {
-    console.error('❌ DB에 인증된 사용자가 없습니다. /auth/strava 로 먼저 인증해 주세요.');
-    process.exit(1);
-  }
-  console.log(`✅ Athlete ID: ${athlete.athlete_id}`);
-
-  // 최근 활동 목록 조회
-  const token = await getValidAccessToken(athlete.athlete_id);
-  const activitiesRes = await axios.get(`${STRAVA_API_BASE}/athlete/activities`, {
-    headers: { Authorization: `Bearer ${token}` },
-    params: { per_page: 20 },
-  });
-
-  const activities = activitiesRes.data as any[];
-
-  // 수영 활동만 필터링
-  const swims = activities.filter((a: any) => a.sport_type === 'Swim' || a.type === 'Swim');
-  if (swims.length === 0) {
-    console.error('❌ 최근 활동에서 수영 기록을 찾을 수 없습니다.');
-    process.exit(1);
+  if (arg) {
+    activityId = toActivityId(arg);
+  } else {
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const now = Date.now();
+    const activities = await listActivities(ymd(new Date(now - 30 * 86400000)), ymd(new Date(now + 86400000)));
+    const swim = activities.find((a) => isSwimType(a.type));
+    if (!swim) {
+      console.error('❌ 최근 30일 intervals.icu 활동에서 수영(type=Swim)을 찾지 못했습니다.');
+      console.error(`   받은 활동 타입: ${[...new Set(activities.map((a) => a.type))].join(', ') || '없음'}`);
+      process.exit(1);
+    }
+    activityId = swim.id;
   }
 
-  const latestSwim = swims[0];
-  console.log(`\n🏊 최근 수영 활동: "${latestSwim.name}" (ID: ${latestSwim.id})`);
-  console.log(`   날짜: ${new Date(latestSwim.start_date_local).toLocaleString('ko-KR')}`);
-  console.log(`   거리: ${Math.round(latestSwim.distance)}m`);
-  console.log(`   시간: ${formatDuration(latestSwim.moving_time)}`);
-  console.log(`   페이스: ${formatPace(latestSwim.average_speed)}/100m`);
-
-  // 상세 데이터 + 랩 조회
-  console.log('\n📡 상세 데이터 및 랩 조회 중...');
-  const [activity, laps] = await Promise.all([
-    getActivity(athlete.athlete_id, latestSwim.id),
-    getActivityLaps(athlete.athlete_id, latestSwim.id),
-  ]);
-
-  console.log(`   랩 수: ${laps.length}개`);
+  const { activity, laps } = await getActivityWithLaps(activityId);
+  console.log(`\n🏊 "${activity.name}" (id ${activityId}, type ${activity.type})`);
+  console.log(`   날짜: ${activity.start_date_local}`);
+  console.log(`   거리: ${Math.round(activity.distance)}m · 수영 ${formatDuration(activity.moving_time)} · 경과 ${formatDuration(activity.elapsed_time)}`);
+  console.log(`   페이스: ${formatPace(activity.average_speed)}/100m`);
   if (activity.average_heartrate) {
     console.log(`   심박수: 평균 ${Math.round(activity.average_heartrate)}bpm / 최대 ${Math.round(activity.max_heartrate || 0)}bpm`);
   }
 
-  // 랩별 휴식 신호 확인용 덤프. 강습이면 랩 사이 휴식(elapsed − moving)이
-  // 길고 불규칙하게, 자유수영이면 거의 0으로 찍혀야 정상.
-  const totalRest = Math.max(0, activity.elapsed_time - activity.moving_time);
-  console.log(`\n🔍 휴식 신호 점검 (실제 수영 ${formatDuration(activity.moving_time)} / 경과 ${formatDuration(activity.elapsed_time)} / 휴식 합계 ${formatDuration(totalRest)})`);
-  laps.slice(0, 25).forEach((lap, i) => {
-    const rest = Math.max(0, lap.elapsed_time - lap.moving_time);
-    console.log(`   랩 ${i + 1}: ${Math.round(lap.distance)}m, ${formatPace(lap.average_speed)}/100m, 수영 ${formatDuration(lap.moving_time)}, 휴식 ${rest > 0 ? formatDuration(rest) : '없음'}`);
+  // 분석기의 휴식 판정은 "거리 10m 미만 랩 = 휴식"에 기대고 있다(Strava 시절 실측).
+  // intervals.icu의 icu_intervals에도 휴식이 0m 랩으로 남는지 여기서 확인한다.
+  console.log(`\n🔍 랩(icu_intervals) ${laps.length}개 — 휴식이 0m 랩으로 보이는지 확인`);
+  laps.slice(0, 30).forEach((lap, i) => {
+    const pause = lap.distance < 10 ? ' ← 휴식 판정' : '';
+    console.log(`   랩 ${i + 1}: ${Math.round(lap.distance)}m, ${formatPace(lap.average_speed)}/100m, 수영 ${formatDuration(lap.moving_time)}, 경과 ${formatDuration(lap.elapsed_time)}${pause}`);
   });
-  if (laps.length > 25) console.log(`   ... 외 ${laps.length - 25}개 랩`);
+  if (laps.length > 30) console.log(`   ... 외 ${laps.length - 30}개`);
+  const lapSum = laps.reduce((s, l) => s + l.distance, 0);
+  console.log(`   랩 거리 합 ${Math.round(lapSum)}m vs 활동 거리 ${Math.round(activity.distance)}m`);
 
-  // AI 분석
+  const streams = await getActivityStreams(activityId).catch((err) => {
+    console.log(`   스트림 조회 실패: ${err.message}`);
+    return {};
+  });
+  const lens = Object.entries(streams).map(([k, v]) => `${k}=${(v as unknown[] | undefined)?.length ?? '없음'}`);
+  console.log(`\n📈 스트림: ${lens.join(', ') || '없음'}`);
+
   console.log('\n🤖 AI 분석 중...');
-  const { buildSwimContext } = await import('../src/services/swimContext');
-  const swimContext = await buildSwimContext(athlete.athlete_id, activity);
+  const swimContext = await buildSwimContext(activity, intervalsSource);
+  console.log(`   스플릿: ${swimContext.splitStats ? `${swimContext.splitStats.count}개 구간` : '없음'} · 최근 수영 ${swimContext.recentSwims.length}건`);
   const analysis = await analyzeSwim(activity, laps, swimContext);
 
-  console.log('\n📝 분석 결과:');
+  console.log('\n📝 분석 결과 (저장·전송 안 함):');
   console.log('─'.repeat(60));
   console.log(analysis);
   console.log('─'.repeat(60));
-
-  // description 업데이트 여부 확인
-  const readline = await import('readline');
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.question('\n이 분석 결과를 Strava description에 업데이트할까요? (y/N) ', async (answer) => {
-    rl.close();
-    if (answer.toLowerCase() === 'y') {
-      const { updateActivityDescription } = await import('../src/services/strava');
-      const { markActivityProcessed } = await import('../src/db/models/athlete');
-
-      const existingDesc = activity.description || '';
-      const separator = existingDesc ? '\n\n---\n' : '';
-      const newDescription = `${existingDesc}${separator}🏊 AI 수영 분석\n${analysis}`;
-
-      await updateActivityDescription(athlete.athlete_id, latestSwim.id, newDescription);
-      markActivityProcessed(latestSwim.id, athlete.athlete_id);
-      console.log('✅ Strava description 업데이트 완료!');
-    } else {
-      console.log('업데이트 취소.');
-    }
-  });
 }
 
 main().catch((err) => {
-  console.error('Error:', err.message || err);
+  const detail = err.response ? `HTTP ${err.response.status} ${JSON.stringify(err.response.data).slice(0, 300)}` : err.message || err;
+  console.error('Error:', detail);
   process.exit(1);
 });

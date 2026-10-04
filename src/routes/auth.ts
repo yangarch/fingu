@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
-import { config } from '../config/env';
+import { config, stravaConfig } from '../config/env';
 import { saveAthlete, deleteAthlete, getAthlete } from '../db/models/athlete';
 import { StravaTokenResponse } from '../types/strava';
 
@@ -8,7 +8,7 @@ const router = Router();
 
 router.get('/strava', (_req: Request, res: Response) => {
   const params = new URLSearchParams({
-    client_id: config.strava.clientId,
+    client_id: stravaConfig().clientId,
     redirect_uri: `${config.server.baseUrl}/auth/strava/callback`,
     response_type: 'code',
     approval_prompt: 'auto',
@@ -27,8 +27,8 @@ router.get('/strava/callback', async (req: Request, res: Response) => {
 
   try {
     const response = await axios.post<StravaTokenResponse>('https://www.strava.com/oauth/token', {
-      client_id: config.strava.clientId,
-      client_secret: config.strava.clientSecret,
+      client_id: stravaConfig().clientId,
+      client_secret: stravaConfig().clientSecret,
       code,
       grant_type: 'authorization_code',
     });

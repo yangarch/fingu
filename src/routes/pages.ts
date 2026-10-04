@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
+import { config } from '../config/env';
 import { getAthlete, getAthleteAnalyses } from '../db/models/athlete';
-import { formatDuration } from '../services/strava';
+import { resolveOwnerAthleteId } from '../services/intervalsPoller';
 
 const router = Router();
 
@@ -51,11 +52,35 @@ router.get('/', (req: Request, res: Response) => {
     <div class="emoji">🏊</div>
     <h1>fingu</h1>
     <p class="subtitle">수영 AI 코치</p>
-    <p class="desc">Strava 수영 기록을 자동으로 분석하여<br>AI 코치의 맞춤 피드백을 제공합니다.</p>
-    <a href="/auth/strava" class="btn">Strava로 시작하기</a>
+    ${config.strava
+      ? `<p class="desc">Strava 수영 기록을 자동으로 분석하여<br>AI 코치의 맞춤 피드백을 제공합니다.</p>
+    <a href="/auth/strava" class="btn">Strava로 시작하기</a>`
+      : `<p class="desc">Garmin 수영 기록을 intervals.icu에서 받아<br>AI 코치의 맞춤 피드백을 제공합니다.</p>`}
   </div>
 </body>
 </html>`);
+});
+
+/**
+ * Owner login without Strava OAuth: GET /login?token=ADMIN_TOKEN sets the same
+ * athlete_id cookie the OAuth callback used to set. Note the cookie itself is
+ * still unsigned (see CLAUDE.md).
+ */
+router.get('/login', (req: Request, res: Response) => {
+  const token = (req.query.token as string) || '';
+  if (!config.admin.token || token !== config.admin.token) {
+    res.status(403).send('Forbidden');
+    return;
+  }
+  let ownerId: number;
+  try {
+    ownerId = resolveOwnerAthleteId();
+  } catch (err) {
+    res.status(500).send(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  res.cookie('athlete_id', String(ownerId), { httpOnly: true, sameSite: 'lax' });
+  res.redirect('/dashboard');
 });
 
 router.get('/dashboard', (req: Request, res: Response) => {
@@ -142,10 +167,10 @@ router.get('/dashboard', (req: Request, res: Response) => {
     <span class="logo">🏊 fingu</span>
     <div style="display:flex;align-items:center;gap:12px">
       <span class="athlete">${athlete.athlete_name ?? ''}</span>
-      <form class="disconnect-form" method="POST" action="/auth/disconnect"
+      ${config.strava ? `<form class="disconnect-form" method="POST" action="/auth/disconnect"
             onsubmit="return confirm('연동을 해제하면 모든 분석 기록이 삭제됩니다. 계속할까요?')">
         <button type="submit" class="disconnect-btn">연동 해제</button>
-      </form>
+      </form>` : ''}
     </div>
   </header>
   <main>

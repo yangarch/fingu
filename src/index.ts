@@ -6,6 +6,7 @@ import authRouter from './routes/auth';
 import webhookRouter from './routes/webhook';
 import pagesRouter from './routes/pages';
 import adminRouter from './routes/admin';
+import { startIntervalsPolling } from './services/intervalsPoller';
 
 const app = express();
 
@@ -18,12 +19,17 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/', pagesRouter);
-app.use('/auth', authRouter);
-app.use('/webhook', webhookRouter);
+// Strava routes only when STRAVA_* is configured (API subscriber-only since 2026-09-30).
+if (config.strava) {
+  app.use('/auth', authRouter);
+  app.use('/webhook', webhookRouter);
+}
 app.use('/admin', adminRouter);
 
 // Initialize DB on startup
 getDb();
+
+startIntervalsPolling();
 
 app.listen(config.server.port, () => {
   console.log(`🏊 Fingu server running on port ${config.server.port}`);

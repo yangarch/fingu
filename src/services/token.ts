@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { config } from '../config/env';
+import { stravaConfig } from '../config/env';
 import { getAthlete, updateTokens } from '../db/models/athlete';
 import { StravaTokenData } from '../types/strava';
 
@@ -19,8 +19,8 @@ export async function getValidAccessToken(athleteId: number): Promise<string> {
 
 async function refreshAccessToken(athlete: StravaTokenData): Promise<string> {
   const response = await axios.post('https://www.strava.com/oauth/token', {
-    client_id: config.strava.clientId,
-    client_secret: config.strava.clientSecret,
+    client_id: stravaConfig().clientId,
+    client_secret: stravaConfig().clientSecret,
     grant_type: 'refresh_token',
     refresh_token: athlete.refresh_token,
   });

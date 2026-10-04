@@ -1,5 +1,6 @@
-import { StravaActivity } from '../types/strava';
+import { StravaActivity, StravaStreams } from '../types/strava';
 import { getActivityStreams, getRecentActivities, formatPace } from './strava';
+import * as intervals from './intervals';
 import { computeSwimSplits, SplitStats } from './swimMetrics';
 
 export interface RecentSwim {
@@ -18,15 +19,41 @@ export interface SwimContext {
 const isSwim = (a: { sport_type?: string; type?: string }): boolean =>
   a.sport_type === 'Swim' || a.type === 'Swim';
 
+/** Where the extra context comes from — Strava (preserved) or intervals.icu. */
+export interface SwimDataSource {
+  getStreams(activityId: number): Promise<StravaStreams>;
+  /** Recent activities (any type), newest first. */
+  getRecent(activity: StravaActivity): Promise<StravaActivity[]>;
+}
+
+export function stravaSource(athleteId: number): SwimDataSource {
+  return {
+    getStreams: (id) => getActivityStreams(athleteId, id),
+    getRecent: () => getRecentActivities(athleteId, 30),
+  };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const intervalsSource: SwimDataSource = {
+  getStreams: (id) => intervals.getActivityStreams(id),
+  getRecent: (activity) => {
+    // The 90 days up to the swim (inclusive) — plenty for the 8 swims we show.
+    const end = activity.start_date_local ? new Date(activity.start_date_local) : new Date();
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    return intervals.listActivities(ymd(new Date(end.getTime() - 90 * DAY_MS)), ymd(end));
+  },
+};
+
 /**
  * Gathers the extra data the analyzer uses beyond laps: stream-based splits and
  * recent-swim history. Each fetch is best-effort — failures degrade to empty so
  * analysis never breaks just because streams or history are missing.
  */
-export async function buildSwimContext(athleteId: number, activity: StravaActivity): Promise<SwimContext> {
+export async function buildSwimContext(activity: StravaActivity, source: SwimDataSource): Promise<SwimContext> {
   const [streams, recent] = await Promise.all([
-    getActivityStreams(athleteId, activity.id).catch(() => ({})),
-    getRecentActivities(athleteId, 30).catch(() => []),
+    source.getStreams(activity.id).catch(() => ({})),
+    source.getRecent(activity).catch(() => []),
   ]);
 
   const splitStats = computeSwimSplits(streams);

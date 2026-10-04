@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
-import { config } from '../config/env';
+import { stravaConfig } from '../config/env';
 import { StravaActivity, StravaWebhookPayload } from '../types/strava';
 import { getActivity, getActivityLaps, updateActivityDescription } from '../services/strava';
 import { analyzeSwim } from '../services/analyzer';
-import { buildSwimContext } from '../services/swimContext';
+import { buildSwimContext, stravaSource } from '../services/swimContext';
 import { notifyFailure } from '../services/notifier';
 import { getAthlete, isActivityProcessed, markActivityProcessed, saveAnalysis } from '../db/models/athlete';
 
@@ -32,7 +32,7 @@ function isAppInactiveError(err: unknown): boolean {
 router.get('/', (req: Request, res: Response) => {
   const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': verifyToken } = req.query;
 
-  if (mode === 'subscribe' && verifyToken === config.strava.verifyToken) {
+  if (mode === 'subscribe' && verifyToken === stravaConfig().verifyToken) {
     console.log('Webhook verified successfully');
     res.json({ 'hub.challenge': challenge });
     return;
@@ -111,7 +111,7 @@ async function processActivity(activityId: number, athleteId: number): Promise<v
     return;
   }
 
-  const swimContext = await buildSwimContext(athleteId, freshActivity);
+  const swimContext = await buildSwimContext(freshActivity, stravaSource(athleteId));
   const analysis = await analyzeSwim(freshActivity, laps, swimContext);
 
   const newDescription = buildAnalyzedDescription(freshActivity.description || '', analysis);
