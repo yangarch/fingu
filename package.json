@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
-    "test:swim": "ts-node-dev --transpile-only scripts/test-analyze.ts"
+    "test:swim": "ts-node-dev --transpile-only scripts/test-analyze.ts",
+    "probe:streams": "ts-node-dev --transpile-only scripts/probe-streams.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
