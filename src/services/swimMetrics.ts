@@ -135,10 +135,14 @@ export function lapsFromStreams(streams: StravaStreams): StravaLap[] | null {
   const hr = streams.heartrate;
 
   const laps: StravaLap[] = [];
-  const pushLap = (from: number, to: number, rest: boolean) => {
+  // distTo: where the swim's distance is measured to. The last few cm of a length
+  // creep in during the stall at the wall, so a swim segment counts distance up
+  // to the end of the following rest — otherwise 25m lengths read as 24m and the
+  // laps no longer sum to the activity distance.
+  const pushLap = (from: number, to: number, rest: boolean, distTo = to) => {
     const seconds = time[to] - time[from];
     if (seconds <= 0) return;
-    const distance = rest ? 0 : dist[to] - dist[from];
+    const distance = rest ? 0 : dist[distTo] - dist[from];
     const hrs = hr ? hr.slice(from, to + 1).filter((h) => typeof h === 'number') : [];
     laps.push({
       id: laps.length,
@@ -159,7 +163,7 @@ export function lapsFromStreams(streams: StravaStreams): StravaLap[] | null {
     let j = i;
     while (j + 1 < dist.length && dist[j + 1] - dist[i] < STALL_MAX_GAIN_M) j++;
     if (time[j] - time[i] >= REST_MIN_SEC) {
-      if (i > segStart) pushLap(segStart, i, false);
+      if (i > segStart) pushLap(segStart, i, false, j);
       pushLap(i, j, true);
       segStart = j;
     }
