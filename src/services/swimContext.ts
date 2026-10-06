@@ -1,6 +1,7 @@
 import { StravaActivity, StravaStreams } from '../types/strava';
 import { getActivityStreams, getRecentActivities, formatPace } from './strava';
 import * as intervals from './intervals';
+import { isSwimType } from './intervals';
 import { computeSwimSplits, SplitStats } from './swimMetrics';
 
 export interface RecentSwim {
@@ -17,7 +18,7 @@ export interface SwimContext {
 }
 
 const isSwim = (a: { sport_type?: string; type?: string }): boolean =>
-  a.sport_type === 'Swim' || a.type === 'Swim';
+  isSwimType(a.sport_type) || isSwimType(a.type);
 
 /** Where the extra context comes from — Strava (preserved) or intervals.icu. */
 export interface SwimDataSource {

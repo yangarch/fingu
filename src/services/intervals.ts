@@ -58,8 +58,12 @@ export class IntervalsError extends Error {
   }
 }
 
+// Garmin pool swims arrive as "Swim"; the intervals.icu companion app (Apple
+// Watch) uploads swims as "OpenWaterSwim" even from the pool.
+const SWIM_TYPES = new Set(['Swim', 'OpenWaterSwim']);
+
 export function isSwimType(type?: string): boolean {
-  return type === 'Swim';
+  return SWIM_TYPES.has(type ?? '');
 }
 
 function toStravaActivity(a: IntervalsActivity): StravaActivity {

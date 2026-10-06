@@ -22,7 +22,7 @@ async function main() {
     const activities = await listActivities(ymd(new Date(now - 30 * 86400000)), ymd(new Date(now + 86400000)));
     const swim = activities.find((a) => isSwimType(a.type));
     if (!swim) {
-      console.error('❌ 최근 30일 intervals.icu 활동에서 수영(type=Swim)을 찾지 못했습니다.');
+      console.error('❌ 최근 30일 intervals.icu 활동에서 수영(type=Swim/OpenWaterSwim)을 찾지 못했습니다.');
       console.error(`   받은 활동 타입: ${[...new Set(activities.map((a) => a.type))].join(', ') || '없음'}`);
       process.exit(1);
     }

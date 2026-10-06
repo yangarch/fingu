@@ -21,7 +21,7 @@ npm run lint    # eslint src/**/*.ts
 현재 파이프라인은 `src/services/intervalsPoller.ts`:
 
 1. `startIntervalsPolling`이 `INTERVALS_POLL_MINUTES`(15)마다 `syncSwims` 실행 (intervals.icu 웹훅은 OAuth 앱 전용).
-2. `INTERVALS_SINCE`(2026-09-30) 이후 `type === 'Swim'` 중 `processed_activities`에 없는 것만.
+2. `INTERVALS_SINCE`(2026-09-30) 이후 수영(`isSwimType`: `Swim`, `OpenWaterSwim` — Apple Watch companion app은 풀 수영도 후자로 올린다) 중 `processed_activities`에 없는 것만.
 3. `services/intervals.ts`가 intervals.icu 응답을 **Strava 타입**(`StravaActivity`/`StravaLap`/`StravaStreams`)으로
    변환 → `analyzeSwim`(`claude-sonnet-4-6`)과 `swimContext`/`swimMetrics`는 소스를 모른다.
 4. DB 저장(`markActivityProcessed` + `saveAnalysis`) 후 `notifyAnalysis`로 본문 전송. 활동에 쓰지 않는다.
