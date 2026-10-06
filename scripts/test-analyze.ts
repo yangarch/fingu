@@ -2,7 +2,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { formatPace, formatDuration } from '../src/services/strava';
-import { getActivityStreams, getActivityWithLaps, isSwimType, listActivities, toActivityId } from '../src/services/intervals';
+import { getActivityStreams, getActivityWithLaps, getSwimForAnalysis, isSwimType, listActivities, toActivityId } from '../src/services/intervals';
+import { lapsFromStreams } from '../src/services/swimMetrics';
 import { buildSwimContext, intervalsSource } from '../src/services/swimContext';
 import { analyzeSwim } from '../src/services/analyzer';
 
@@ -29,7 +30,7 @@ async function main() {
     activityId = swim.id;
   }
 
-  const { activity, laps } = await getActivityWithLaps(activityId);
+  const { activity, laps, lapsFromStreams: derived } = await getSwimForAnalysis(activityId);
   console.log(`\n🏊 "${activity.name}" (id ${activityId}, type ${activity.type})`);
   console.log(`   날짜: ${activity.start_date_local}`);
   console.log(`   거리: ${Math.round(activity.distance)}m · 수영 ${formatDuration(activity.moving_time)} · 경과 ${formatDuration(activity.elapsed_time)}`);
@@ -40,7 +41,11 @@ async function main() {
 
   // 분석기의 휴식 판정은 "거리 10m 미만 랩 = 휴식"에 기대고 있다(Strava 시절 실측).
   // intervals.icu의 icu_intervals에도 휴식이 0m 랩으로 남는지 여기서 확인한다.
-  console.log(`\n🔍 랩(icu_intervals) ${laps.length}개 — 휴식이 0m 랩으로 보이는지 확인`);
+  if (derived) {
+    const raw = await getActivityWithLaps(activityId);
+    console.log(`\n⚠️ 원본 랩 ${raw.laps.length}개(휴식 없음) → 스트림으로 랩 재구성. 수영 시간·페이스도 휴식 제외로 다시 계산함`);
+  }
+  console.log(`\n🔍 랩 ${laps.length}개 (${derived ? '스트림 재구성' : 'icu_intervals'}) — 휴식이 0m 랩으로 보이는지 확인`);
   laps.slice(0, 30).forEach((lap, i) => {
     const pause = lap.distance < 10 ? ' ← 휴식 판정' : '';
     console.log(`   랩 ${i + 1}: ${Math.round(lap.distance)}m, ${formatPace(lap.average_speed)}/100m, 수영 ${formatDuration(lap.moving_time)}, 경과 ${formatDuration(lap.elapsed_time)}${pause}`);
@@ -55,6 +60,13 @@ async function main() {
   });
   const lens = Object.entries(streams).map(([k, v]) => `${k}=${(v as unknown[] | undefined)?.length ?? '없음'}`);
   console.log(`\n📈 스트림: ${lens.join(', ') || '없음'}`);
+  if (!derived && laps.length > 1) {
+    // 대조용: 원본 랩이 있는 기록(Garmin)에서 스트림 판정이 실제 휴식 랩과 맞는지
+    const fromStreams = lapsFromStreams(streams) ?? [];
+    const rest = (ls: typeof laps) => ls.filter((l) => l.distance < 10).map((l) => formatDuration(Math.round(l.moving_time)));
+    console.log(`   대조 — 원본 휴식 ${rest(laps).length}개: ${rest(laps).join(', ')}`);
+    console.log(`   대조 — 스트림 휴식 ${rest(fromStreams).length}개: ${rest(fromStreams).join(', ')}`);
+  }
 
   console.log('\n🤖 AI 분석 중...');
   const swimContext = await buildSwimContext(activity, intervalsSource);

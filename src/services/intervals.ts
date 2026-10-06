@@ -2,6 +2,7 @@ import axios from 'axios';
 import { config } from '../config/env';
 import { IntervalsActivity, IntervalsInterval, IntervalsStream } from '../types/intervals';
 import { StravaActivity, StravaLap, StravaStreams } from '../types/strava';
+import { lapsFromStreams } from './swimMetrics';
 
 /**
  * intervals.icu client (Garmin → intervals.icu → fingu). Responses are mapped to
@@ -121,6 +122,34 @@ export async function listActivities(oldest: string, newest: string): Promise<St
 export async function getActivityWithLaps(activityId: number): Promise<{ activity: StravaActivity; laps: StravaLap[] }> {
   const a = await get<IntervalsActivity>(`/activity/${toIcuId(activityId)}`, { intervals: 'true' });
   return { activity: toStravaActivity(a), laps: (a.icu_intervals ?? []).map(toLap) };
+}
+
+/**
+ * Activity + laps ready for analyzeSwim. When the recording is a single lap for
+ * the whole session (Apple Watch via the companion app: no rest laps, moving
+ * time = elapsed), laps are rebuilt from streams so rests show up as 0 m laps,
+ * and moving time / average speed are recomputed from the swim segments only.
+ * Multi-lap recordings (Garmin) are returned as-is.
+ */
+export async function getSwimForAnalysis(
+  activityId: number
+): Promise<{ activity: StravaActivity; laps: StravaLap[]; lapsFromStreams: boolean }> {
+  const { activity, laps } = await getActivityWithLaps(activityId);
+  if (laps.length > 1) return { activity, laps, lapsFromStreams: false };
+
+  const derived = lapsFromStreams(await getActivityStreams(activityId));
+  if (!derived || !derived.some((lap) => lap.distance === 0)) return { activity, laps, lapsFromStreams: false };
+
+  const movingTime = derived.filter((lap) => lap.distance > 0).reduce((s, lap) => s + lap.moving_time, 0);
+  return {
+    activity: {
+      ...activity,
+      moving_time: movingTime,
+      average_speed: movingTime > 0 ? activity.distance / movingTime : activity.average_speed,
+    },
+    laps: derived,
+    lapsFromStreams: true,
+  };
 }
 
 export async function getActivityStreams(activityId: number): Promise<StravaStreams> {

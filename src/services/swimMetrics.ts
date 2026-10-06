@@ -1,4 +1,4 @@
-import { StravaStreams } from '../types/strava';
+import { StravaLap, StravaStreams } from '../types/strava';
 
 // Below this speed (m/s) the swimmer is treated as resting/paused, so that time
 // is excluded from pace. Pool-swim streams sit near 0 during wall rests/drills
@@ -112,4 +112,60 @@ export function computeSwimSplits(streams: StravaStreams, segMeters = 100): Spli
     hrStart,
     hrEnd,
   };
+}
+
+// A distance stall at least this long is rest (wall stop, coach's instruction).
+// Checked against a Garmin lesson whose rest laps are known: stream stalls
+// matched 14 of 15 rest laps to within ~1s; the miss was a 5s breather.
+const REST_MIN_SEC = 10;
+// Distance gain below this still counts as stalled (GPS-less pool streams creep).
+const STALL_MAX_GAIN_M = 0.5;
+
+/**
+ * Rebuilds laps from time/distance streams as alternating swim segments and
+ * 0 m rest laps — the same shape the analyzer reads from Garmin rest laps. For
+ * recordings that arrive as one lap for the whole session (Apple Watch via the
+ * intervals.icu companion app), where the laps alone hide every rest.
+ * Returns null when the streams are unusable.
+ */
+export function lapsFromStreams(streams: StravaStreams): StravaLap[] | null {
+  const dist = streams.distance;
+  const time = streams.time;
+  if (!dist || !time || dist.length < 3 || dist.length !== time.length) return null;
+  const hr = streams.heartrate;
+
+  const laps: StravaLap[] = [];
+  const pushLap = (from: number, to: number, rest: boolean) => {
+    const seconds = time[to] - time[from];
+    if (seconds <= 0) return;
+    const distance = rest ? 0 : dist[to] - dist[from];
+    const hrs = hr ? hr.slice(from, to + 1).filter((h) => typeof h === 'number') : [];
+    laps.push({
+      id: laps.length,
+      name: `Lap ${laps.length + 1}`,
+      distance,
+      elapsed_time: seconds,
+      moving_time: seconds,
+      average_speed: distance / seconds,
+      max_speed: 0,
+      average_heartrate: hrs.length ? mean(hrs) : undefined,
+      lap_index: laps.length + 1,
+    });
+  };
+
+  let segStart = 0;
+  let i = 0;
+  while (i < dist.length - 1) {
+    let j = i;
+    while (j + 1 < dist.length && dist[j + 1] - dist[i] < STALL_MAX_GAIN_M) j++;
+    if (time[j] - time[i] >= REST_MIN_SEC) {
+      if (i > segStart) pushLap(segStart, i, false);
+      pushLap(i, j, true);
+      segStart = j;
+    }
+    i = j + 1;
+  }
+  if (segStart < dist.length - 1) pushLap(segStart, dist.length - 1, false);
+
+  return laps.length > 0 ? laps : null;
 }

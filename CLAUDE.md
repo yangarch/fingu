@@ -42,8 +42,11 @@ Strava 호출은 `services/strava.ts` + `services/token.ts`.
 - **intervals.icu API**: Basic 인증(username `API_KEY`), 선수 id `0` = 본인. Cloudflare가 일부 기본 UA를
   1010으로 막으므로 `User-Agent`를 명시한다. 에러는 `IntervalsError`로 다시 던진다 — AxiosError의
   request config에 API 키가 들어 있어 로그/알림으로 새기 때문.
-- **랩/휴식 판정 의존**: 분석기는 "거리 10m 미만 랩 = 휴식"(Strava 시절 실측)에 기댄다. intervals.icu의
-  `icu_intervals`도 그렇게 오는지는 `npm run test:swim`으로 실데이터 확인할 것.
+- **랩/휴식 판정 의존**: 분석기는 "거리 10m 미만 랩 = 휴식"에 기댄다. Garmin 기록은 `icu_intervals`에 휴식이
+  0m 랩으로 온다(실측). Apple Watch(companion app) 기록은 **통짜 랩 1개**로 와서 휴식이 안 보이므로,
+  `getSwimForAnalysis`가 랩 ≤1개일 때 스트림의 거리 정지(≥10초) 구간으로 랩을 재구성하고 수영 시간·페이스도
+  휴식 제외로 다시 계산한다(`lapsFromStreams`). 이 기준은 Garmin 강습의 실제 휴식 랩과 대조해 15개 중 14개 일치
+  (놓친 1개는 5초). 점검: `npm run test:swim -- i<id>`, `npm run probe:streams -- i<id> …`.
 - **인증은 서명 없는 `athlete_id` 쿠키**. 대시보드가 이 쿠키만 신뢰한다. Strava OAuth 대신
   `/login?token=ADMIN_TOKEN`이 소유자(`resolveOwnerAthleteId`) 쿠키를 심는다.
   보안 관련 작업 시 이 점을 반드시 고려 (현재 값 위조 방어 없음).

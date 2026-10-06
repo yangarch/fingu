@@ -1,7 +1,7 @@
 import { config } from '../config/env';
 import { getAllAthletes, isActivityProcessed, markActivityProcessed, saveAnalysis } from '../db/models/athlete';
 import { analyzeSwim } from './analyzer';
-import { getActivityWithLaps, isSwimType, listActivities } from './intervals';
+import { getSwimForAnalysis, isSwimType, listActivities } from './intervals';
 import { notifyAnalysis, notifyFailure } from './notifier';
 import { buildSwimContext, intervalsSource } from './swimContext';
 
@@ -97,7 +97,7 @@ export async function syncSwims(opts: { days?: number; apply: boolean }): Promis
 }
 
 async function analyzeAndSave(activityId: number, ownerId: number): Promise<void> {
-  const { activity, laps } = await getActivityWithLaps(activityId);
+  const { activity, laps } = await getSwimForAnalysis(activityId);
   const swimContext = await buildSwimContext(activity, intervalsSource);
   const analysis = await analyzeSwim(activity, laps, swimContext);
 
